@@ -205,6 +205,8 @@ def parse_env(env=os.environ):
     for hostname, value in hosts.iteritems():
         formatted_hostname = format_hostname(hostname)
 
+        value['link'] = env.get('%s_LINK_SERVICE' % (service_name), '')
+        value['resolver'] = env.get('%s_RESOLVER_ADDR' % (service_name), '')
         value['log_format'] = env.get('%s_ACCESS_LOG_FORMAT' % (service_name), 'combined')
         access_log = value['access_log'] = env.get('%s_ACCESS_LOG' % (service_name), '/dev/stdout')
         log_level = value['log_level'] = env.get('%s_LOG_LEVEL' % (service_name), 'error')
