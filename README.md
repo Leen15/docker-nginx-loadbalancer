@@ -1,6 +1,8 @@
 # docker-nginx-loadbalancer
 
 This image will auto-generate its own config file for a load-balancer.
+It's a fork of jasonwyatt/docker-nginx-loadbalancer but also support dynamic dns link and custom access log format.
+
 
 It looks for environment variables in the following formats:
 
@@ -17,15 +19,78 @@ Optional/Conditional environment variables:
     <service-name>_ACCESS_LOG=[/dev/stdout|off] (optional - default: /dev/stdout)
     <service-name>_ERROR_LOG=[/dev/stdout|/dev/null] (optional - default: /dev/stdout)
     <service-name>_LOG_LEVEL=[emerg|alert|crit|error|warn|notice|info|debug'] (optional - default: error)
+    <service-name>_LOG_MODE=upstreamlog (optional - default: blank)
+    <service-name>_LOG_FORMAT=upstreamlog + compatible log format (optional - default: blank)
     <env-formatted-vhostname>_SSL_CERTIFICATE=<something.pem> (required if the vhost will need ssl support)
     <env-formatted-vhostname>_SSL_CERTIFICATE_KEY=<something.key> (required if the vhost will need ssl support)
     <env-formatted-vhostname>_SSL_DHPARAM=<dhparam.pem> (required if the vhost will need ssl support)
     <env-formatted-vhostname>_SSL_CIPHERS=<"colon separated ciphers wrapped in quotes"> (required if the vhost will need ssl support)
     <env-formatted-vhostname>_SSL_PROTOCOLS=<protocol (e.g. TLSv1.2)> (required if the vhost will need ssl support)
 
-And will build an nginx config file.
+**ATTENTION: Nginx has a problem with DNS in upstream: if you use DNS (and not IP) in ADDR envs, nginx will resolve to the ip ONLY AT THE STARTUP, so if then these dns change their IP, NGINX will not work anymore.**   
+For avoid this, I added two more ENVS:     
+   
+    <service-name>_LINK_SERVICE=<web> (optional - default: blank)   
+    <service-name>_RESOLVER_ADDR=<169.254.169.250> (optional - default: blank)   
+   
+With these two envs, you can attach a link to the container and this dns will be used and updated automatically.   
+With rancher, you can link a service and round robin balacing works fine.   
+Resolver_addr it's the dns server that should be used to resolve the dns (check in /etc/resolv.conf inside your container)   
 
-Example:
+Example 1:
+
+    # automatically created environment variables (docker links)
+    WEBAPP_LINK_SERVICE=web
+    WEBAPP_1_PORT_80_TCP_ADDR=web
+    WEBAPP_RESOLVER_ADDR=169.254.169.250
+    WEBAPP_LOG_LEVEL=error
+    WEBAPP_PATH=/
+    WEBAPP_EXPOSE_PROTOCOL=http
+    WEBAPP_ACCESS_LOG=/dev/stdout
+    WEBAPP_ERROR_LOG=/dev/stdout
+    WEBAPP_ACCESS_LOG_MODE=upstreamlog
+    WEBAPP_ACCESS_LOG_FORMAT=upstreamlog '[$time_local] - fwd=$remote_addr container=$upstream_addr response_status=$status status=$upstream_status path="$request" response=$upstream_response_time total_time=$request_time bytes=$body_bytes_sent user_agent="$http_user_agent" host=$http_host body=$request_body'
+
+Generates (/etc/nginx/sites-enabled/proxy.conf):
+
+    upstream webappstream {
+        server web:80;
+    }
+
+    server {
+        listen 80;
+
+        server_name 0.0.0.0;
+
+        log_format upstreamlog '[$time_local] - fwd=$remote_addr container=$upstream_addr response_status=$status status=$upstream_status path="$request" response=$upstream_response_time total_time=$request_time bytes=$body_bytes_sent user_agent="$http_user_agent" host=$http_host body=$request_body';
+        error_log /dev/stdout error;
+        access_log /dev/stdout upstreamlog;
+
+        root /usr/share/nginx/html;
+
+        # For service: WEBAPP
+        location / {
+            resolver 169.254.169.250 valid=5s;
+            resolver_timeout 5s;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Real-IP $remote_addr;
+            set $webapp web;
+            proxy_pass http://$webapp;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_buffering off;
+        }
+    }
+And logs like this in stdout:
+
+      [11/Oct/2016:16:06:08 +0000] - fwd=10.42.24.138 container=10.42.96.50:80 response_status=200 status=200 path="GET / HTTP/1.1" response=0.002 total_time=0.002 bytes=0 user_agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.116 Safari/537.36" host=www.example.com body=-
+      [11/Oct/2016:16:08:30 +0000] - fwd=10.42.24.138 container=10.42.171.179:80 response_status=200 status=200 path="GET /ping HTTP/1.1" response=0.387 total_time=0.387 bytes=7106 user_agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.116 Safari/537.36" host=www.example.com body=-
+
+   
+   
+   
+Example 2:
 
     # automatically created environment variables (docker links)
     WEBAPP_1_PORT_80_TCP_ADDR=192.168.0.2
