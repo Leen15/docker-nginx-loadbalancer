@@ -134,9 +134,9 @@ parser.add_argument(
     default='/etc/nginx/sites-enabled/proxy.conf'
     )
 
-def build_conf(hosts, services):
+def build_conf(hosts, services, blocked_IPs):
     template = env.get_template('proxy.conf')
-    return template.render(hosts=hosts, services=services)
+    return template.render(hosts=hosts, services=services, blocked_IPs=blocked_IPs)
 
 def parse_env(env=os.environ):
     prefix = env.get('ENV_PREFIX')
@@ -151,6 +151,7 @@ def parse_env(env=os.environ):
 
     services = {}
     hosts = {}
+    blocked_IPs = {}
 
     # find services and collect addresses
     for var, value in env.iteritems():
@@ -164,8 +165,8 @@ def parse_env(env=os.environ):
                     continue
             if service_name in services:
                 services[service_name]['addresses'].append(value)
-            else:
-                print 'Found service: %s' % service_name
+            elif service_port != 0:
+                print 'Found service: %s with port %s' % (service_name, service_port)
                 services[service_name] = {
                     'addresses': [value],
                     'port': service_port,
@@ -215,6 +216,11 @@ def parse_env(env=os.environ):
         assert log_level in [None, 'emerg', 'alert', 'crit', 'error', 'warn', 'notice', 'info', 'debug'], 'Invalid value for %s_LOG_LEVEL: %s, must be "emerg", "alert", "crit", "error", "warn", "notice", "info", "debug" or nonexistant.' % (service_name, log_level)
         assert error_log in ['/dev/stdout', '/dev/null'], 'Invalid value for %s_ERROR_LOG: %s, must be "/dev/stdout" or "/dev/null"' % (service_name, error_log)
         value['access_log'] = value['access_log'] + " " + env.get('%s_ACCESS_LOG_MODE' % (service_name), '')
+
+
+        value['block_ua'] = env.get('%s_BLOCK_USER_AGENT' % (service_name), '')
+
+        blocked_IPs = env.get('%s_BLOCK_IP' % (service_name), '').split(",")   
                               
         if value['protocols']['https']:
             ssl_certificate = env.get('%s_SSL_CERTIFICATE' % formatted_hostname)
@@ -238,7 +244,7 @@ def parse_env(env=os.environ):
             value['ssl_ciphers'] = ssl_ciphers
             value['ssl_protocols'] = ssl_protocols
 
-    return hosts, services
+    return hosts, services, blocked_IPs
 
 def format_hostname(hostname):
     return hostname.replace('.', '_').upper()
@@ -246,15 +252,17 @@ def format_hostname(hostname):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    hosts, services = parse_env()
+    hosts, services, blocked_IPs = parse_env()
     if args.test == 'parse':
         print "Services:"
         print "%s\n" % json.dumps(services, sort_keys=True, indent=4, separators=(',', ': '))
         print "Hosts:"
         print "%s" % json.dumps(hosts, sort_keys=True, indent=4, separators=(',', ': '))
+        print "Blocked IPs:"
+        print "%s" % json.dumps(blocked_IPs, sort_keys=True, indent=4, separators=(',', ': '))
         exit(0)
 
-    conf_contents = build_conf(hosts, services)
+    conf_contents = build_conf(hosts, services, blocked_IPs)
     sys.stdout.flush()
     if args.test == 'conf':
         print "Contents of proxy.conf:%s" % conf_contents.replace('\n', '\n    ')

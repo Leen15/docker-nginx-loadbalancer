@@ -37,6 +37,15 @@ With these two envs, you can attach a link to the container and this dns will be
 With rancher, you can link a service and round robin balacing works fine.   
 Resolver_addr it's the dns server that should be used to resolve the dns (check in /etc/resolv.conf inside your container)   
 
+**I also added the option to ban clients with specific User Agent or IP.**
+**Nginx will check for remote_addr and http_x_forwarded_for, so the ban works also if this nginx is after another proxy (that sends X-Forwarded-For header):**
+ 
+    <service-name>_BLOCK_USER_AGENT=<trident|chrome> (optional - default: blank)   
+    <service-name>_BLOCK_IP=<192.168.0.1,192.168.0.1,bad_ip> (optional - default: blank)   
+Keep attention:   
+- User agent strings are case insensitive and should be concatenated with a pipe ("|")   
+- IP ban doesn't work with partial IP or with CIDR address notation. It works with single ips concatenated with a comma (",").    
+
 Example 1:
 
     # automatically created environment variables (docker links)
@@ -56,13 +65,23 @@ Generates (/etc/nginx/sites-enabled/proxy.conf):
     upstream webappstream {
         server web:80;
     }
+    
+    map $remote_addr $denied_remote {
+      default 0;
+    }
+    
+    map $http_x_forwarded_for $denied_forwarded {
+      default 0;
+    }
+    
+    log_format upstreamlog '[$time_local] - fwd=$remote_addr container=$upstream_addr response_status=$status status=$upstream_status path="$request" response=$upstream_response_time total_time=$request_time bytes=$body_bytes_sent user_agent="$http_user_agent" host=$http_host body=$request_body';
+            
 
     server {
         listen 80;
 
         server_name 0.0.0.0;
 
-        log_format upstreamlog '[$time_local] - fwd=$remote_addr container=$upstream_addr response_status=$status status=$upstream_status path="$request" response=$upstream_response_time total_time=$request_time bytes=$body_bytes_sent user_agent="$http_user_agent" host=$http_host body=$request_body';
         error_log /dev/stdout error;
         access_log /dev/stdout upstreamlog;
 
