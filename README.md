@@ -92,7 +92,7 @@ Generates (/etc/nginx/sites-enabled/proxy.conf):
             resolver 169.254.169.250 valid=5s;
             resolver_timeout 5s;
             proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-For $http_x_forwarded_for;
             proxy_set_header X-Real-IP $remote_addr;
             set $webapp web;
             proxy_pass http://$webapp;
