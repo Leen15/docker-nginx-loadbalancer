@@ -176,7 +176,7 @@ def parse_env(env=os.environ):
     # find service details
     for service_name, value in services.iteritems():
         path = value['location'] = env.get('%s_PATH' % (service_name))
-        remote_path = value['remote_path'] = env.get('%s_REMOTE_PATH' % (service_name), '/')
+        remote_path = value['remote_path'] = env.get('%s_REMOTE_PATH' % (service_name), '')
         balancing_type = value['balancing_type'] = env.get('%s_BALANCING_TYPE' % (service_name))
         expose_protocol = value['expose_protocol'] = env.get('%s_EXPOSE_PROTOCOL' % (service_name), 'http')
         hostname = value['host'] = env.get('%s_HOSTNAME' % (service_name))
